@@ -2,10 +2,11 @@
 
 import constants
 import Network
-from Network import remote, Network
+from network import remote, Network
 from abstract_node import *
 from key import Key
 from random import randrange
+from thread_util import async
 
 class ClientNode(Node):
 
@@ -58,7 +59,7 @@ class ClientNode(Node):
         self.predecessor = self.successor.predecessor
         self.__init_finger_table()  # already constructed first entry
 
-        self.__notify_ring()  # asynchronious!
+        self.__notify_ring()  # asynchronous!
         self.__take_keys()
 
 
@@ -95,7 +96,7 @@ class ClientNode(Node):
         """
         
         temp_predecessor = self.successor.predecessor
-        if temp_predecessor in interval(self, self.successor):
+        if temp_predecessor in interval(self, self.successor, strict_l = True, strict_u = True):
             self.successor = temp_predecessor
             temp_predecessor.notify()
 
@@ -114,7 +115,7 @@ class ClientNode(Node):
         """
         
         finger = randrange(constants.m)
-        self.finger_table[finger] = self.find_successor(self, start(finger))
+        self.__fix_finger(finger)
 
 
     ###########################################
@@ -136,10 +137,36 @@ class ClientNode(Node):
     @remote
     def find_successor(self, asker, keyval):
         """
-        Find the node queried
+        Find the node queried.
+        We go to the closest predecessor of the keyval.
+        Afterwards, we are then looking for the successor.
         """
-        pass
+        return self.find_predecessor(self, keyval).successor
 
+
+    @remote
+    def find_predecessor(self, asker, keyval):
+        """
+        Find the predecessor node.
+        We do this by iteratively picking a closer node
+        to the correct interval
+        """
+
+        if keyval in interval(self, self.successor, True):
+            return self
+
+        """
+        Successor does not own the key.
+        Therefore, let's pick our best guess,
+        then ask them to find it.
+        """
+
+        for finger in reversed(self.finger_table):
+            if finger in interval(self, keyval, True, True):
+                return finger.find_predecessor(keyval)
+
+        return self  # this seems like a problem
+        
 
     ###########################################
     ############# BACKING METHODS #############
@@ -156,7 +183,7 @@ class ClientNode(Node):
         This means that you get to be all of your own fingers,
         etc.
         """
-        peer_self = Peer(self.networking, self.key, self)
+        peer_self = Peer(self.networking, self.key, self) # might not have to make a new Peer
         self.predecessor = peer_self
         self.finger_table = [peer_self] * constants.m
 
@@ -166,7 +193,18 @@ class ClientNode(Node):
         We borrow a finger table from our successor,
         and use it as hints, going through and modifying entries.
         """
-        pass
+        temp_table = self.successor.get_finger_table()
+
+        for i in range(1, m-1):            
+            if start(i) in interval(self, temp_table[i-1], strict_u = True):
+                self.finger_table[i] = temp_table[i-1]
+            else:
+                self.__fix_finger(i)
+
+
+    @async
+    def __fix_finger(self, finger):
+        self.finger_table[i] = self.successor.find_successor(start(i))
 
 
     def __notify_ring(self):
@@ -174,11 +212,12 @@ class ClientNode(Node):
         Find potential nodes for whom we might be
         in their finger table and alert them.
         """
-        pass
+        for finger in range(m):
+            self.find_predecessor(n - start(finger)).give_finger(finger)
 
 
     def __take_keys(self):
         """
         Take any keys from the successor that we now own.
         """
-        pass
+        pass  # implement the actual key sharing later

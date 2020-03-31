@@ -8,18 +8,22 @@ def start(i):
 class Interval:
 
     def __init__(self, lower, upper, strict_l = False, strict_u = False):
-        self.interval = (lower, upper)
+        self.lower = lower
+        self.upper = upper
         self.strict_l = strict_l
         self.strict_u = strict_u
 
     def __contains__(self, value):
         if (
-                strict_l && self.interval[0] == value or
-                strict_r && self.interval[1] == value
+                self.strict_l && self.lower == value or
+                self.strict_r && self.upper == value
         ):
             return False
 
-        return self.interval[0] <= value and self.interval[1] >= value
+        if lower > upper:
+            return self.lower >= value or  self.upper <= value 
+        else:
+            return self.lower <= value and self.upper >= value
 
     
 class Node(ABC):
